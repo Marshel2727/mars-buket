@@ -8,6 +8,9 @@ from app.services.product_service import (
 from app.utils.upload.product import save_product_image, delete_product_image
 from app.schemas.product_schema import KategoriSchema, ProductSchema, VarianProdukSchema, GambarProdukSchema
 from app.utils.response import success_response, error_response
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from marshmallow import ValidationError
+from app.utils.security import role_required
 
 product_bp = Blueprint('product_bp', __name__, url_prefix='/api/v1')
 
@@ -21,17 +24,21 @@ def handle_service_response(result, status_code):
 # ==========================================
 
 @product_bp.route('/kategori', methods=['POST'])
+@role_required('admin')
 def create_kategori():
     try:
-        data = request.get_json()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = KategoriSchema()
         validated_data = schema.load(data)
         result, status_code = KategoriService.create_kategori(validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/kategori', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_all_kategori():
     try:
         result, status_code = KategoriService.get_all_kategori()
@@ -40,6 +47,7 @@ def get_all_kategori():
         return error_response(str(e), 500)
 
 @product_bp.route('/kategori/<string:kategori_id>', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_kategori(kategori_id):
     try:
         result, status_code = KategoriService.get_kategori_by_id(kategori_id)
@@ -48,17 +56,21 @@ def get_kategori(kategori_id):
         return error_response(str(e), 500)
 
 @product_bp.route('/kategori/<string:kategori_id>', methods=['PUT'])
+@role_required('admin')
 def update_kategori(kategori_id):
     try:
-        data = request.get_json()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = KategoriSchema()
         validated_data = schema.load(data)
         result, status_code = KategoriService.update_kategori(kategori_id, validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/kategori/<string:kategori_id>', methods=['DELETE'])
+@role_required('admin')
 def delete_kategori(kategori_id):
     try:
         result, status_code = KategoriService.delete_kategori(kategori_id)
@@ -71,9 +83,10 @@ def delete_kategori(kategori_id):
 # ==========================================
 
 @product_bp.route('/produk', methods=['POST'])
+@role_required('admin')
 def create_produk():
     try:
-        data = request.form.to_dict()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = ProductSchema()
         validated_data = schema.load(data)
         
@@ -84,10 +97,13 @@ def create_produk():
         
         result, status_code = ProductService.create_product(validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
     
 @product_bp.route('/produk', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_all_produk():
     try:
         result, status_code = ProductService.get_all_products()
@@ -96,6 +112,7 @@ def get_all_produk():
         return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_produk(produk_id):
     try:
         result, status_code = ProductService.get_product_by_id(produk_id)
@@ -104,11 +121,16 @@ def get_produk(produk_id):
         return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>', methods=['PUT'])
+@role_required('admin')
 def update_produk(produk_id):
     try:
-        data = request.form.to_dict()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = ProductSchema()
         validated_data = schema.load(data)
+        
+        existing, code = ProductService.get_product_by_id(produk_id)
+        if code != 200:
+            return error_response(existing.get('message', 'Produk tidak ditemukan'), code)
         
         if 'gambar' in request.files:
             file = request.files['gambar']
@@ -116,16 +138,22 @@ def update_produk(produk_id):
             validated_data['gambar_url'] = gambar_url
             
             # Hapus gambar lama jika ada
-            existing, code = ProductService.get_product_by_id(produk_id)
-            if code == 200 and existing.get('data') and existing['data'].get('gambar_url'):
+            if existing.get('data') and existing['data'].get('gambar_url'):
                 delete_product_image(existing['data']['gambar_url'])
+        else:
+            # Pertahankan gambar lama jika tidak ada upload baru & tidak dikirim di payload
+            if 'gambar_url' not in validated_data:
+                validated_data['gambar_url'] = existing['data'].get('gambar_url')
         
         result, status_code = ProductService.update_product(produk_id, validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>', methods=['DELETE'])
+@role_required('admin')
 def delete_produk(produk_id):
     try:
         # Hapus gambar produk jika ada
@@ -142,17 +170,21 @@ def delete_produk(produk_id):
 # 3. ENDPOINTS VARIAN PRODUK
 # ==========================================
 @product_bp.route('/varian', methods=['POST'])
+@role_required('admin')
 def create_varian():
     try:
-        data = request.get_json()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = VarianProdukSchema()
         validated_data = schema.load(data)
         result, status_code = VarianProdukService.create_varian_produk(validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>/varian', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_varian_by_produk(produk_id):
     try:
         result, status_code = VarianProdukService.get_varian_by_produk_id(produk_id)
@@ -161,6 +193,7 @@ def get_varian_by_produk(produk_id):
         return error_response(str(e), 500)
 
 @product_bp.route('/varian/<string:varian_id>', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_varian(varian_id):
     try:
         result, status_code = VarianProdukService.get_varian_by_id(varian_id)
@@ -169,17 +202,21 @@ def get_varian(varian_id):
         return error_response(str(e), 500)
 
 @product_bp.route('/varian/<string:varian_id>', methods=['PUT'])
+@role_required('admin')
 def update_varian(varian_id):
     try:
-        data = request.get_json()
+        data = request.get_json() if request.is_json else request.form.to_dict()
         schema = VarianProdukSchema()
         validated_data = schema.load(data)
         result, status_code = VarianProdukService.update_varian(varian_id, validated_data)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/varian/<string:varian_id>', methods=['DELETE'])
+@role_required('admin')
 def delete_varian(varian_id):
     try:
         result, status_code = VarianProdukService.delete_varian(varian_id)
@@ -192,6 +229,7 @@ def delete_varian(varian_id):
 #=========================================
 
 @product_bp.route('/produk/<string:produk_id>/gallery', methods=['POST'])
+@role_required('admin')
 def upload_gambar_produk(produk_id):
     try:
         if 'gambar' not in request.files:
@@ -205,10 +243,13 @@ def upload_gambar_produk(produk_id):
 
         result, status_code = GambarProdukService.add_gambar_produk(produk_id, gambar_url, is_utama)
         return handle_service_response(result, status_code)
+    except ValidationError as err:
+        return error_response("Validasi gagal", 400, err.messages)
     except Exception as e:
-        return error_response(str(e), 400)
+        return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>/gallery/<string:gambar_id>', methods=['DELETE'])
+@role_required('admin')
 def delete_gambar_produk(produk_id, gambar_id):
     try:
         existing, code = GambarProdukService.get_gambar_by_id(gambar_id)
@@ -221,6 +262,7 @@ def delete_gambar_produk(produk_id, gambar_id):
         return error_response(str(e), 500)
 
 @product_bp.route('/produk/<string:produk_id>/gallery', methods=['GET'])
+@role_required('admin', 'pelanggan')
 def get_gambar_produk(produk_id):
     try:
         result, status_code = GambarProdukService.get_gallery_by_product_id(produk_id)

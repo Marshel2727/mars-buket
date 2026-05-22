@@ -4,11 +4,12 @@ from app.schemas.address_schema import UserAddressSchema
 from flask import Blueprint, request
 from app.utils.response import success_response, error_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.utils.security import role_required
 
 address_bp = Blueprint('address_bp', __name__, url_prefix='/api/v1/addresses')
 
 @address_bp.route('/', methods=['POST'])
-@jwt_required()
+@role_required('admin', 'pelanggan')
 def add_address():
     current_user_id = get_jwt_identity() # Typo diperbaiki
     json_data = request.get_json()
@@ -26,7 +27,7 @@ def add_address():
         return error_response(message=result['message'], status_code=status_code)
     
 @address_bp.route('/', methods=['GET'])
-@jwt_required()
+@role_required('admin', 'pelanggan')
 def get_addresses():
     current_user_id = get_jwt_identity()
     result, status_code = AddressBookService.get_addresses(current_user_id)
@@ -38,7 +39,7 @@ def get_addresses():
     
 # UBAH int MENJADI string KARENA ID MENGGUNAKAN UUID
 @address_bp.route('/<string:address_id>', methods=['GET'])
-@jwt_required()
+@role_required('admin', 'pelanggan')
 def get_address_by_id(address_id):
     current_user_id = get_jwt_identity()
     result, status_code = AddressBookService.get_address_by_id(address_id, current_user_id)
@@ -50,7 +51,7 @@ def get_address_by_id(address_id):
     
 # UBAH int MENJADI string
 @address_bp.route('/<string:address_id>', methods=['PUT'])
-@jwt_required()
+@role_required('admin', 'pelanggan')
 def update_address(address_id):
     current_user_id = get_jwt_identity()
     json_data = request.get_json()
@@ -68,7 +69,7 @@ def update_address(address_id):
 
 # UBAH int MENJADI string
 @address_bp.route('/<string:address_id>', methods=['DELETE'])
-@jwt_required()
+@role_required('admin', 'pelanggan')
 def delete_address(address_id):
     current_user_id = get_jwt_identity()
     result, status_code = AddressBookService.delete_address(address_id, current_user_id)

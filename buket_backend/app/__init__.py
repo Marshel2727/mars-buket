@@ -24,6 +24,7 @@ def create_app():
     # Import model setelah inisialisasi db
     from app.models.user import User, Address_Book
     from app.models.product import Kategori, Product, VarianProduk, GaleriProduk
+    from app.models.transaction import Pesanan, DetailPesanan, Pembayaran, Pengiriman
 
     # Import dan register blueprint setelah inisialisasi db
     from app.routes.auth_routes import auth_bp
@@ -34,5 +35,8 @@ def create_app():
 
     from app.routes.product_routes import product_bp
     app.register_blueprint(product_bp)
+
+    from app.routes.order_routes import order_bp
+    app.register_blueprint(order_bp)
 
     return app
